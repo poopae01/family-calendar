@@ -187,7 +187,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        const CENTRAL_PASSWORD = "Tp230456";
+        const CENTRAL_PASSWORD = "Tp240356";
 
         const defaultMembers = [
             { id: 'father', name: 'พ่อ', color: 'blue' },
@@ -245,4 +245,324 @@
         const membersList = document.getElementById('members-list');
         const addMemberForm = document.getElementById('add-member-form');
 
-        window
+        window.setTemplate = function(text) {
+            eventText.value = text;
+            eventText.focus();
+        };
+
+        async function saveDataToCloud() {
+            try {
+                await setDoc(doc(db, "family_data", "main_config"), {
+                    members: members,
+                    events: events
+                });
+            } catch (error) {
+                console.error("Error writing document: ", error);
+            }
+        }
+
+        onSnapshot(doc(db, "family_data", "main_config"), (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                members = data.members || defaultMembers;
+                events = data.events || defaultEvents;
+            } else {
+                members = defaultMembers;
+                events = defaultEvents;
+                saveDataToCloud();
+            }
+            checkAuth();
+            if (currentUser) {
+                renderMemberLegends();
+                renderCalendar();
+            }
+        });
+
+        // กำหนดสิทธิ์การเขียน/ลบ: พ่อและแม่จัดการของตัวเองกับน้องเปอร์ได้, คนอื่นจัดการได้เฉพาะของตัวเอง
+        function getWritableMemberIds(userId) {
+            if (userId === 'father' || userId === 'mother') {
+                return [userId, 'son'];
+            }
+            return [userId];
+        }
+
+        function checkAuth() {
+            if (currentUser && members.some(m => m.id === currentUser)) {
+                loginScreen.classList.add('hidden');
+                appWrapper.classList.remove('hidden');
+                const userObj = members.find(m => m.id === currentUser);
+                currentUserNameSpan.innerText = userObj ? userObj.name : currentUser;
+            } else {
+                loginScreen.classList.remove('hidden');
+                appWrapper.classList.add('hidden');
+                renderLoginOptions();
+            }
+        }
+
+        function renderLoginOptions() {
+            loginMemberSelect.innerHTML = '';
+            members.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.innerText = m.name;
+                loginMemberSelect.appendChild(opt);
+            });
+        }
+
+        loginForm.onsubmit = (e) => {
+            e.preventDefault();
+            const enteredPassword = loginPasswordInput.value;
+
+            if (enteredPassword === CENTRAL_PASSWORD) {
+                currentUser = loginMemberSelect.value;
+                localStorage.setItem('family_current_user', currentUser);
+                loginPasswordInput.value = '';
+                loginError.classList.add('hidden');
+                checkAuth();
+                initApp();
+            } else {
+                loginError.classList.remove('hidden');
+                loginPasswordInput.value = '';
+            }
+        };
+
+        logoutBtn.onclick = () => {
+            localStorage.removeItem('family_current_user');
+            currentUser = null;
+            checkAuth();
+        };
+
+        function initApp() {
+            renderMemberLegends();
+            renderCalendar();
+        }
+
+        function renderMemberLegends() {
+            memberLegendContainer.innerHTML = '';
+            members.forEach(m => {
+                const style = colorMap[m.color] || colorMap.blue;
+                const span = document.createElement('span');
+                span.className = `flex items-center gap-1.5 ${style.bg} border ${style.border} ${style.text} px-2.5 py-1 rounded-full`;
+                span.innerHTML = `<span class="w-2 h-2 rounded-full ${style.dot}"></span> ${m.name}`;
+                memberLegendContainer.appendChild(span);
+            });
+        }
+
+        function renderCalendar() {
+            gridEl.innerHTML = '';
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+
+            monthYearDisplay.innerText = `${monthNamesThai[month]} ${year + 543}`;
+
+            const firstDayIndex = new Date(year, month, 1).getDay();
+            const totalDays = new Date(year, month + 1, 0).getDate();
+            const prevTotalDays = new Date(year, month, 0).getDate();
+
+            for (let i = firstDayIndex; i > 0; i--) {
+                const dayNum = prevTotalDays - i + 1;
+                gridEl.appendChild(createCell(dayNum, true));
+            }
+
+            for (let i = 1; i <= totalDays; i++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                gridEl.appendChild(createCell(i, false, dateStr));
+            }
+
+            const totalCellsSoFar = firstDayIndex + totalDays;
+            const remainingCells = totalCellsSoFar % 7 === 0 ? 0 : 7 - (totalCellsSoFar % 7);
+            for (let i = 1; i <= remainingCells; i++) {
+                gridEl.appendChild(createCell(i, true));
+            }
+        }
+
+        function createCell(dayNum, isOtherMonth, dateStr = '') {
+            const div = document.createElement('div');
+            div.className = `bg-slate-900 p-1.5 sm:p-2 flex flex-col min-h-[90px] sm:min-h-[110px] transition ${isOtherMonth ? 'opacity-30 bg-slate-950/40' : 'hover:bg-slate-800/80 cursor-pointer'}`;
+            
+            if (!isOtherMonth) {
+                div.onclick = () => openModal(dateStr);
+            }
+
+            const today = new Date();
+            const isToday = !isOtherMonth && 
+                today.getFullYear() === currentDate.getFullYear() && 
+                today.getMonth() === currentDate.getMonth() && 
+                today.getDate() === dayNum;
+
+            div.innerHTML = `
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs sm:text-sm font-semibold ${isToday ? 'bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center shadow' : 'text-slate-300'}">${dayNum}</span>
+                </div>
+                <div class="flex-1 space-y-1 overflow-hidden" id="events-${dateStr}"></div>
+            `;
+
+            if (!isOtherMonth && events[dateStr]) {
+                const eventContainer = div.querySelector(`#events-${dateStr}`);
+                events[dateStr].forEach(ev => {
+                    const memberObj = members.find(m => m.id === ev.member) || { name: ev.member, color: 'blue' };
+                    const style = colorMap[memberObj.color] || colorMap.blue;
+                    const badge = document.createElement('div');
+                    badge.className = `text-[10px] sm:text-xs px-1.5 py-0.5 rounded border ${style.bg} ${style.text} ${style.border} truncate flex items-center gap-1`;
+                    badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${style.dot} shrink-0"></span><span class="truncate"><b>${memberObj.name}:</b> ${ev.text}</span>`;
+                    eventContainer.appendChild(badge);
+                });
+            }
+
+            return div;
+        }
+
+        document.getElementById('prev-month').onclick = () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        };
+        document.getElementById('next-month').onclick = () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        };
+
+        function openModal(dateStr) {
+            selectedDateStrInput.value = dateStr;
+            const [y, m, d] = dateStr.split('-');
+            modalDateTitle.innerText = `กิจกรรมวันที่ ${parseInt(d)} ${monthNamesThai[parseInt(m)-1]} ${parseInt(y)+543}`;
+            
+            eventMemberSelect.innerHTML = '';
+            const writableIds = getWritableMemberIds(currentUser);
+            members.forEach(m => {
+                if (writableIds.includes(m.id)) {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.innerText = m.name;
+                    eventMemberSelect.appendChild(opt);
+                }
+            });
+
+            renderModalEvents(dateStr);
+            modalEl.classList.remove('hidden');
+            modalEl.classList.add('flex');
+        }
+
+        function closeModal() {
+            modalEl.classList.remove('flex');
+            modalEl.classList.add('hidden');
+            eventText.value = '';
+        }
+
+        document.getElementById('close-modal').onclick = closeModal;
+        document.getElementById('cancel-modal').onclick = closeModal;
+
+        function renderModalEvents(dateStr) {
+            modalEventList.innerHTML = '';
+            const dayEvents = events[dateStr] || [];
+            if (dayEvents.length === 0) {
+                modalEventList.innerHTML = '<p class="text-xs text-slate-500 italic">ยังไม่มีกิจกรรมในวันนี้</p>';
+                return;
+            }
+
+            const writableIds = getWritableMemberIds(currentUser);
+
+            dayEvents.forEach(ev => {
+                const memberObj = members.find(m => m.id === ev.member) || { name: ev.member, color: 'blue' };
+                const style = colorMap[memberObj.color] || colorMap.blue;
+                const item = document.createElement('div');
+                item.className = `flex justify-between items-center p-2 rounded border ${style.bg} ${style.border} text-xs`;
+                
+                // เช็คสิทธิ์การลบตามสิทธิ์เขียน (Writable IDs) ที่สอดคล้องกับการล็อกอิน
+                const canDelete = writableIds.includes(ev.member);
+
+                item.innerHTML = `
+                    <span class="${style.text}"><b>${memberObj.name}:</b> ${ev.text}</span>
+                    ${canDelete ? `<button onclick="deleteEvent('${dateStr}', ${ev.id})" class="text-slate-400 hover:text-red-400 px-1.5 py-0.5 cursor-pointer">ลบ</button>` : '<span class="text-[10px] text-slate-500">ไม่มีสิทธิ์ลบ</span>'}
+                `;
+                modalEventList.appendChild(item);
+            });
+        }
+
+        eventForm.onsubmit = (e) => {
+            e.preventDefault();
+            const dateStr = selectedDateStrInput.value;
+            const member = eventMemberSelect.value;
+            const text = eventText.value.trim();
+            if (!text) return;
+
+            if (!events[dateStr]) events[dateStr] = [];
+            events[dateStr].push({ id: Date.now(), member, text });
+
+            saveDataToCloud();
+            eventText.value = '';
+            renderModalEvents(dateStr);
+            renderCalendar();
+        };
+
+        window.deleteEvent = function(dateStr, id) {
+            const writableIds = getWritableMemberIds(currentUser);
+            const targetEvent = (events[dateStr] || []).find(ev => ev.id === id);
+
+            if (!targetEvent || !writableIds.includes(targetEvent.member)) {
+                alert('คุณไม่มีสิทธิ์ลบกิจกรรมของสมาชิกท่านนี้ครับ');
+                return;
+            }
+
+            events[dateStr] = events[dateStr].filter(ev => ev.id !== id);
+            if (events[dateStr].length === 0) delete events[dateStr];
+            
+            saveDataToCloud();
+            renderModalEvents(dateStr);
+            renderCalendar();
+        };
+
+        document.getElementById('open-manage-members').onclick = () => {
+            renderMembersManagementList();
+            membersModal.classList.remove('hidden');
+            membersModal.classList.add('flex');
+        };
+
+        document.getElementById('close-members-modal').onclick = () => {
+            membersModal.classList.remove('flex');
+            membersModal.classList.add('hidden');
+        };
+
+        function renderMembersManagementList() {
+            membersList.innerHTML = '';
+            members.forEach(m => {
+                const style = colorMap[m.color] || colorMap.blue;
+                const div = document.createElement('div');
+                div.className = `flex justify-between items-center p-2 rounded border ${style.bg} ${style.border} text-xs`;
+                div.innerHTML = `
+                    <span class="${style.text} font-semibold flex items-center gap-1.5"><span class="w-2 h-2 rounded-full ${style.dot}"></span> ${m.name}</span>
+                    ${members.length > 1 ? `<button onclick="deleteMember('${m.id}')" class="text-slate-400 hover:text-red-400 px-2 py-0.5 cursor-pointer">ลบ</button>` : '<span class="text-[10px] text-slate-500">สมาชิกหลัก</span>'}
+                `;
+                membersList.appendChild(div);
+            });
+        }
+
+        addMemberForm.onsubmit = (e) => {
+            e.preventDefault();
+            const nameInput = document.getElementById('new-member-name');
+            const colorSelect = document.getElementById('new-member-color');
+            const name = nameInput.value.trim();
+            const color = colorSelect.value;
+            if (!name) return;
+
+            const id = 'member_' + Date.now();
+            members.push({ id, name, color });
+            saveDataToCloud();
+
+            nameInput.value = '';
+            renderMembersManagementList();
+            initApp();
+        };
+
+        window.deleteMember = function(id) {
+            if (members.length <= 1) {
+                alert('ต้องมีสมาชิกอย่างน้อย 1 คนในบ้าน');
+                return;
+            }
+            members = members.filter(m => m.id !== id);
+            saveDataToCloud();
+            renderMembersManagementList();
+            initApp();
+        };
+    </script>
+</body>
+</html>
