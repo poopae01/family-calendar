@@ -18,7 +18,7 @@
             <div class="text-center space-y-2">
                 <div class="inline-block bg-indigo-600 text-white p-3 rounded-2xl font-bold text-2xl shadow-lg mb-2">☁️</div>
                 <h1 class="text-2xl font-bold text-slate-100">ปฏิทินครอบครัว (Cloud)</h1>
-                <p class="text-xs text-slate-400">กรุณายืนยันตัวตนก่อนเข้าใช้งาน (รหัสผ่านกลาง: 1234)</p>
+                <p class="text-xs text-slate-400">กรุณายืนยันตัวตนก่อนเข้าใช้งาน (รหัสผ่านกลาง: Tpxxxxxx)</p>
             </div>
             
             <form id="login-form" class="space-y-4">
@@ -187,7 +187,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        const CENTRAL_PASSWORD = "1234";
+        const CENTRAL_PASSWORD = "Tp230456";
 
         const defaultMembers = [
             { id: 'father', name: 'พ่อ', color: 'blue' },
