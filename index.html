@@ -50,7 +50,7 @@
                     <div class="bg-indigo-600 text-white p-2 rounded-xl font-bold text-xl shadow">🏠</div>
                     <div>
                         <h1 class="text-xl font-bold tracking-wide">ปฏิทินกิจกรรมครอบครัว</h1>
-                        <p class="text-xs text-slate-400">ซิงค์ข้อมูลออนไลน์เรียลไทม์ทุกอุปกรณ์</p>
+                        <p class="text-xs text-slate-400">ซิงค์ข้อมูลออนไลน์เรียลไทม์ทุกอุปกรณ์ (Auto-Logout ใน 15 นาที)</p>
                     </div>
                 </div>
 
@@ -245,6 +245,28 @@
         const membersList = document.getElementById('members-list');
         const addMemberForm = document.getElementById('add-member-form');
 
+        // --- Auto Logout (15 Minutes Inactivity Timer) ---
+        let inactivityTimer;
+        const INACTIVITY_LIMIT = 15 * 60 * 1000; // 15 นาที (คิดเป็นมิลลิวินาที)
+
+        function resetInactivityTimer() {
+            clearTimeout(inactivityTimer);
+            if (currentUser) {
+                inactivityTimer = setTimeout(() => {
+                    localStorage.removeItem('family_current_user');
+                    currentUser = null;
+                    checkAuth();
+                    alert('⏳ ระบบออกจากระบบอัตโนมัติเนื่องจากไม่มีการใช้งานเกิน 15 นาที');
+                }, INACTIVITY_LIMIT);
+            }
+        }
+
+        // ดักจับการเคลื่อนไหวของผู้ใช้ (เมาส์, คีย์บอร์ด, การสัมผัสหน้าจอมือถือ)
+        ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'].forEach(eventType => {
+            window.addEventListener(eventType, resetInactivityTimer);
+        });
+        // ------------------------------------------------
+
         window.setTemplate = function(text) {
             eventText.value = text;
             eventText.focus();
@@ -278,7 +300,6 @@
             }
         });
 
-        // กำหนดสิทธิ์การเขียน/ลบ: พ่อและแม่จัดการของตัวเองกับน้องเปอร์ได้, คนอื่นจัดการได้เฉพาะของตัวเอง
         function getWritableMemberIds(userId) {
             if (userId === 'father' || userId === 'mother') {
                 return [userId, 'son'];
@@ -292,9 +313,11 @@
                 appWrapper.classList.remove('hidden');
                 const userObj = members.find(m => m.id === currentUser);
                 currentUserNameSpan.innerText = userObj ? userObj.name : currentUser;
+                resetInactivityTimer(); // เริ่มนับเวลาถอยหลังเมื่อเข้าสู่ระบบ
             } else {
                 loginScreen.classList.remove('hidden');
                 appWrapper.classList.add('hidden');
+                clearTimeout(inactivityTimer); // เคลียร์ตัวนับเวลาตอนไม่ได้ล็อกอิน
                 renderLoginOptions();
             }
         }
@@ -467,7 +490,6 @@
                 const item = document.createElement('div');
                 item.className = `flex justify-between items-center p-2 rounded border ${style.bg} ${style.border} text-xs`;
                 
-                // เช็คสิทธิ์การลบตามสิทธิ์เขียน (Writable IDs) ที่สอดคล้องกับการล็อกอิน
                 const canDelete = writableIds.includes(ev.member);
 
                 item.innerHTML = `
@@ -538,7 +560,7 @@
 
         addMemberForm.onsubmit = (e) => {
             e.preventDefault();
-            const nameInput = document.getElementById('new-member-name');
+            nameInput = document.getElementById('new-member-name');
             const colorSelect = document.getElementById('new-member-color');
             const name = nameInput.value.trim();
             const color = colorSelect.value;
