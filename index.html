@@ -247,7 +247,7 @@
 
         // --- Auto Logout (15 Minutes Inactivity Timer) ---
         let inactivityTimer;
-        const INACTIVITY_LIMIT = 15 * 60 * 1000;
+        const INACTIVITY_LIMIT = 15 * 60 * 1000; // 15 นาที
 
         function resetInactivityTimer() {
             clearTimeout(inactivityTimer);
@@ -264,6 +264,7 @@
         ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'].forEach(eventType => {
             window.addEventListener(eventType, resetInactivityTimer);
         });
+        // ------------------------------------------------
 
         window.setTemplate = function(text) {
             eventText.value = text;
@@ -492,13 +493,13 @@
 
                 item.innerHTML = `
                     <span class="${style.text}"><b>${memberObj.name}:</b> ${ev.text}</span>
-                    ${canDelete ? `<button onclick="deleteEvent('${dateStr}',${ev.id})" class="text-slate-400 hover:text-red-400 px-1.5 py-0.5 cursor-pointer">ลบ</button>` : '<span class="text-[10px] text-slate-500">ไม่มีสิทธิ์ลบ</span>'}
+                    ${canDelete ? `<button onclick="deleteEvent('${dateStr}', ${ev.id})" class="text-slate-400 hover:text-red-400 px-1.5 py-0.5 cursor-pointer">ลบ</button>` : '<span class="text-[10px] text-slate-500">ไม่มีสิทธิ์ลบ</span>'}
                 `;
                 modalEventList.appendChild(item);
             });
         }
 
-        // --- Event Form Submit พร้อมเชื่อมต่อแจ้งเตือนเข้า LINE ---
+        // เพิ่มกิจกรรมใหม่ พร้อมส่งแจ้งเตือนเข้า LINE ผ่าน Google Apps Script
         eventForm.onsubmit = async (e) => {
             e.preventDefault();
             const dateStr = selectedDateStrInput.value;
@@ -506,26 +507,22 @@
             const text = eventText.value.trim();
             if (!text) return;
 
-            const memberObj = members.find(m => m.id === member) || { name: member };
-
             if (!events[dateStr]) events[dateStr] = [];
             events[dateStr].push({ id: Date.now(), member, text });
 
-            // 1. บันทึกลง Firebase Cloud
-            await saveDataToCloud();
+            // 1. บันทึกลง Cloud Firestore
+            saveDataToCloud();
 
-            // 2. ส่งข้อความแจ้งเตือนเข้า LINE ผ่าน Google Apps Script Web App
+            // 2. ส่งแจ้งเตือนเข้า LINE บอทอัตโนมัติ
+            const memberObj = members.find(m => m.id === member) || { name: member };
             try {
-                const [y, m, d] = dateStr.split('-');
-                const formattedDate = `${parseInt(d)} ${monthNamesThai[parseInt(m)-1]} ${parseInt(y)+543}`;
-
                 await fetch("https://script.google.com/macros/s/AKfycbw5Y2Z2inb22-EpvwrDSkfQ3s8IxSFIZDFD5HOcKCrhkULHMirhaG2C9CpExJY4OFZ9Ww/exec", {
                     method: "POST",
                     mode: "no-cors",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         title: text,
-                        date: formattedDate,
+                        date: dateStr,
                         category: memberObj.name
                     })
                 });
@@ -599,3 +596,14 @@
 
         window.deleteMember = function(id) {
             if (members.length <= 1) {
+                alert('ต้องมีสมาชิกอย่างน้อย 1 คนในบ้าน');
+                return;
+            }
+            members = members.filter(m => m.id !== id);
+            saveDataToCloud();
+            renderMembersManagementList();
+            initApp();
+        };
+    </script>
+</body>
+</html>
